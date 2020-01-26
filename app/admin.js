@@ -1,4 +1,4 @@
-var myApp = angular.module('libraryAdmin', ['ng-admin', 'core', 'core.config']);
+var myApp = angular.module('libraryAdmin', ['ng-admin', 'core', 'core.config', 'angularFileUpload']);
 myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
 
     var injector = angular.injector(['ng', 'core.config']);
@@ -162,14 +162,15 @@ myApp.config(['$httpProvider', function($httpProvider) {
     });
 }]);
 
-function sendPictureController($scope, FileUploader, Config, $stateParams, notification) {
+function sendPictureController($scope, $location, FileUploader, Config, $stateParams, notification) {
     this.notification = notification;
     this.scope = $scope;
     this.bookId = $stateParams.id;
+    this.location = $location;
     $scope.bookId = $stateParams.id;
     $scope.picture = {
       'type': "FRONT_COVER",
-      'bookId': undefined
+      'bookId': $stateParams.id
     };
 
     $scope.uploader = new FileUploader({
@@ -198,9 +199,10 @@ myApp.directive('sendPicture', ['$location', function ($location) {
 sendPictureController.prototype.sendPicture = function() {
     this.scope.uploader.uploadAll();
     this.notification.log('Picture saved.', {addnCls: 'humane-flatty-success'});
+    this.location.path('/books/show/' + this.bookId);
 };
 
-sendPictureController.$inject = ['$scope', 'FileUploader', 'Config', '$stateParams', 'notification'];
+sendPictureController.$inject = ['$scope', '$location', 'FileUploader', 'Config', '$stateParams', 'notification'];
 
 var sendPictureControllerTemplate =
   '<form novalidate class="picture-form">' +
