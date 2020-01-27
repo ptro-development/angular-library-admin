@@ -9,6 +9,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
     .baseApiUrl(Config.CONFIG.API_URL + '/'); // main API endpoint
 
     var author = nga.entity('authors');
+    author.listView().perPage(5);
     author.listView().fields([
         nga.field('id'),
         nga.field('firstName'),
@@ -32,6 +33,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
     admin.addEntity(author);
 
     var publisher = nga.entity('publishers');
+    publisher.listView().perPage(5);
     publisher.listView().fields([
         nga.field('id'),
         nga.field('name'),
@@ -55,6 +57,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
     admin.addEntity(publisher);
 
     var book = nga.entity('books');
+    book.listView().perPage(5);
     book.listView().fields([
         nga.field('id', 'number'),
         nga.field('title'),
@@ -71,6 +74,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
    ]).listActions(['show']);
 
     var picture = nga.entity('pictures');
+    picture.listView().perPage(5);
     picture.listView().fields([
       nga.field('id'),
       nga.field('name'),
@@ -159,6 +163,16 @@ myApp.config(['$httpProvider', function($httpProvider) {
                 return config;
             },
         };
+    });
+}]);
+
+myApp.config(['RestangularProvider', function (RestangularProvider) {
+    RestangularProvider.addFullRequestInterceptor(function(element, operation, what, url, headers, params, httpConfig) {
+        if (operation == 'getList' && (
+            what == 'pictures' || what == 'books' || what == 'publishers' || what == 'authors')) {
+            params._page -= 1;
+        }
+        return { params: params };
     });
 }]);
 
