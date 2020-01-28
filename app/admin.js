@@ -79,6 +79,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
       nga.field('id'),
       nga.field('name'),
       nga.field('pictureType'),
+      nga.field('pageNumber'),
       nga.field('bookId'),
       nga.field('bookId', 'reference')
         .targetEntity(book)
@@ -89,6 +90,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
       nga.field('id'),
       nga.field('name'),
       nga.field('pictureType'),
+      nga.field('pageNumber'),
       nga.field('bookId', 'reference')
         .targetEntity(book)
         .targetField(nga.field('title'))
@@ -116,7 +118,8 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
           .targetFields([
             nga.field('id'),
             nga.field('name'),
-            nga.field('pictureType')
+            nga.field('pictureType'),
+            nga.field('pageNumber')
           ]),
         nga.field('custom_action').label('')
           .template('<send-picture post="entry"></send-picture>')
@@ -184,7 +187,8 @@ function sendPictureController($scope, $location, FileUploader, Config, $statePa
     $scope.bookId = $stateParams.id;
     $scope.picture = {
       'type': "FRONT_COVER",
-      'bookId': $stateParams.id
+      'bookId': $stateParams.id,
+      'pageNumber': undefined
     };
 
     $scope.uploader = new FileUploader({
@@ -194,6 +198,10 @@ function sendPictureController($scope, $location, FileUploader, Config, $statePa
 
     $scope.uploader.onBeforeUploadItem = function(item) {
       item.url += '?type=' + $scope.picture.type + '&bookId=' + $scope.bookId;
+      var number = parseInt($scope.picture.pageNumber, 10);
+      if (number != null && Number.isInteger(number) && number >= 0) {
+        item.url += '&pageNumber=' + number;
+      }
     };
 }
 
@@ -212,7 +220,7 @@ myApp.directive('sendPicture', ['$location', function ($location) {
 
 sendPictureController.prototype.sendPicture = function() {
     this.scope.uploader.uploadAll();
-    this.notification.log('Picture saved.', {addnCls: 'humane-flatty-success'});
+    this.notification.log('Picture was sent.', {addnCls: 'humane-flatty-success'});
     this.location.path('/books/show/' + this.bookId);
 };
 
@@ -235,11 +243,16 @@ var sendPictureControllerTemplate =
         '<select name="pictureTypeSelect" ng-model="picture.type">' +
           '<option value="FRONT_COVER">FRONT_COVER</option>' +
           '<option value="BACK_COVER">BACK_COVER</option>' +
+          '<option value="PAGE">PAGE</option>' +
         '</select>' +
     '</div>' +
     '<div class="row">' +
       '<label class="col-sm-2">Picture</label>' +
       '<input type="file" nv-file-select="" class="file" data-msg-placeholder="Select File for upload..." uploader="uploader"/>' +
+    '</div>' +
+    '<div class="row">' +
+      '<label class="col-sm-2">Page number</label>' +
+      '<input type="text" name="pageNumber" size="40" placeholder="Page number, only required for a PAGE type picture" ng-model="picture.pageNumber"/>' +
     '</div>' +
     '<input type="submit" ng-click="controller.sendPicture()" value="Save"/>' +
   '</form>';
