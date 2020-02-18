@@ -71,34 +71,59 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
           .targetEntity(publisher)
           .targetField(nga.field('name'))
           .label('Publisher')
-   ]).listActions(['show']);
+    ]).listActions(['show']);
 
-    var picture = nga.entity('pictures');
-    picture.listView().perPage(5);
-    picture.listView().fields([
+    var pictureSummary = nga.entity('picturesSummaries')
+    pictureSummary.listView().perPage(5);
+    pictureSummary.listView().fields([
       nga.field('id'),
       nga.field('name'),
       nga.field('pictureType'),
+      nga.field('pictureSize'),
       nga.field('pageNumber'),
       nga.field('bookId'),
       nga.field('bookId', 'reference')
         .targetEntity(book)
         .targetField(nga.field('title'))
         .label('Book')
+
+    ]).filters([
+        //nga.field('q').label('').attributes({ placeholder: 'Full text' }),
+        nga.field('pictureType'),
+        nga.field('pictureSize')
     ]);
-    picture.showView().fields([
+    pictureSummary.showView().fields([
       nga.field('id'),
       nga.field('name'),
       nga.field('pictureType'),
+      nga.field('pictureSize'),
       nga.field('pageNumber'),
       nga.field('bookId', 'reference')
         .targetEntity(book)
         .targetField(nga.field('title'))
         .label('Book'),
-      nga.field('Data', 'template')
-        .template('<img src="' + Config.CONFIG.API_URL + '/pictures/{{ entry.values.id }}/data" width="100" />')
+      nga.field('Picture', 'template')
+        .template('<img src="' + Config.CONFIG.API_URL + '/picturesSummaries/{{ entry.values.id }}/picture" width="100" />'),
+      nga.field('custom_action').label('')
+        .template('<create-picture post="entry"></create-picture>'),
+      nga.field('custom_action').label('')
+        .template('<delete-picture post="entry"></delete-picture>'),
     ]);
-    admin.addEntity(picture);
+    pictureSummary.creationView().fields([
+      nga.field('bookId', 'reference')
+        .targetEntity(book)
+        .targetField(nga.field('title'))
+        .label('Book'),
+      nga.field('pageNumber')
+        .attributes({ required: false, placeholder: 'Number of page only if required.' }),
+      nga.field('type', 'choice')
+        .choices([
+          { value: 'FRONT_COVER', label: 'FRONT_COVER' },
+          { value: 'BACK_COVER', label: 'BACK_COVER' },
+          { value: 'PAGE', label: 'PAGE' },
+        ])
+    ])
+    admin.addEntity(pictureSummary);
 
     book.showView().fields([
         nga.field('title'),
@@ -112,18 +137,18 @@ myApp.config(['NgAdminConfigurationProvider', function (nga, $stateProvider) {
           .targetEntity(publisher)
           .targetField(nga.field('name'))
           .label('Publisher'),
-        nga.field('pictures', 'referenced_list')
-        	.targetEntity(nga.entity('pictures'))
+        nga.field('picturesSummaries', 'referenced_list')
+        	.targetEntity(nga.entity('picturesSummaries'))
           .targetReferenceField('bookId')
           .targetFields([
             nga.field('id'),
             nga.field('name'),
             nga.field('pictureType'),
+            nga.field('pictureSize'),
             nga.field('pageNumber')
-          ]),
-        nga.field('custom_action').label('')
-          .template('<send-picture post="entry"></send-picture>')
+          ])
     ]);
+
     book.creationView().fields([
       nga.field('title')
         .attributes({ placeholder: '1 chars min, 255 chars max' })
@@ -155,13 +180,19 @@ myApp.config(['$httpProvider', function($httpProvider) {
     $httpProvider.interceptors.push(function() {
         return {
             request: function(config) {
-                // test for /pictures?_filters={book_id:XXX}
-                // http://localhost:8080/library/pictures?_filters={"bookId":7}&_page=1&_perPage=30
-                if (/\/pictures$/.test(config.url) && config.params._filters && config.params._filters.bookId) {
-                    config.url = config.url.replace('pictures', 'books/' + config.params._filters.bookId + '/pictures');
+                if (/\/picturesSummaries$/.test(config.url) && config.method == 'GET' && config.params._filters && config.params._filters.bookId) {
+                    config.url = config.url.replace('picturesSummaries', 'books/' + config.params._filters.bookId + '/picturesSummaries');
                     delete config.params._filters;
                     delete config.params._page;
                     delete config.params._perPage;
+                    return config;
+                }
+                if (/\/picturesSummaries$/.test(config.url) && config.method == 'POST') {
+                   config['params'] = {
+                      'bookId': config.data['bookId'],
+                      'pageNumber': config.data['pageNumber'],
+                      'type': config.data['type']
+                   }
                 }
                 return config;
             },
@@ -172,98 +203,145 @@ myApp.config(['$httpProvider', function($httpProvider) {
 myApp.config(['RestangularProvider', function (RestangularProvider) {
     RestangularProvider.addFullRequestInterceptor(function(element, operation, what, url, headers, params, httpConfig) {
         if (operation == 'getList' && (
-            what == 'pictures' || what == 'books' || what == 'publishers' || what == 'authors')) {
+            what == 'picturesSummaries' || what == 'books' || what == 'publishers' || what == 'authors')) {
             params._page -= 1;
         }
         return { params: params };
     });
 }]);
 
-function sendPictureController($scope, $location, FileUploader, Config, $stateParams, notification) {
+// Create / Add picture
+
+function createPictureController($scope, $location, FileUploader, Config, $stateParams, notification) {
     this.notification = notification;
     this.scope = $scope;
-    this.bookId = $stateParams.id;
+    this.pictureSummaryId = $stateParams.id;
     this.location = $location;
-    $scope.bookId = $stateParams.id;
+    $scope.pictureSummaryId = $stateParams.id;
     $scope.picture = {
-      'type': "FRONT_COVER",
-      'bookId': $stateParams.id,
-      'pageNumber': undefined
+      'pictureSummaryId': $stateParams.id,
     };
 
     $scope.uploader = new FileUploader({
       alias: 'file',
-      url: Config.CONFIG.API_URL + '/pictures'
+      url: Config.CONFIG.API_URL + '/picturesSummaries/' + $stateParams.id + '/picture'
     });
-
-    $scope.uploader.onBeforeUploadItem = function(item) {
-      item.url += '?type=' + $scope.picture.type + '&bookId=' + $scope.bookId;
-      var number = parseInt($scope.picture.pageNumber, 10);
-      if (number != null && Number.isInteger(number) && number >= 0) {
-        item.url += '&pageNumber=' + number;
-      }
-    };
 }
 
-myApp.directive('sendPicture', ['$location', function ($location) {
+myApp.directive('createPicture', ['$location', function ($location) {
     return {
         restrict: 'E',
         scope: { post: '&' },
         template: '<a class="btn btn-default" ng-click="send()">Add picture</a>',
         link: function (scope) {
             scope.send = function () {
-                $location.path('/sendPicture/' + scope.post().values.id);
+                $location.path('/createPicture/' + scope.post().values.id);
             };
         }
     };
 }]);
 
-sendPictureController.prototype.sendPicture = function() {
+createPictureController.prototype.createPicture = function() {
     this.scope.uploader.uploadAll();
     this.notification.log('Picture was sent.', {addnCls: 'humane-flatty-success'});
-    this.location.path('/books/show/' + this.bookId);
+    this.location.path('/picturesSummaries/show/' + this.pictureSummaryId);
 };
 
-sendPictureController.$inject = ['$scope', '$location', 'FileUploader', 'Config', '$stateParams', 'notification'];
+createPictureController.$inject = ['$scope', '$location', 'FileUploader', 'Config', '$stateParams', 'notification'];
 
-var sendPictureControllerTemplate =
+var createPictureControllerTemplate =
   '<form novalidate class="picture-form">' +
     '<div class="row"><div class="col-lg-12">' +
       '<ma-view-actions><ma-back-button></ma-back-button></ma-view-actions>' +
         '<div class="page-header">' +
-          '<h1>Add a new picture for book #{{ controller.bookId }}</h1>' +
+          '<h1>Add a new picture for picture summary #{{ controller.pictureSummaryId }}</h1>' +
         '</div>' +
     '</div></div>' +
-    '<div class="row">' +
-      '<label class="col-sm-2">Title</label>' +
-      '<lable>#{{ controller.bookId }}</label>' +
-    '</div>'+
-    '<div class="row">' +
-      '<label class="col-sm-2">Picture type</label>' +
-        '<select name="pictureTypeSelect" ng-model="picture.type">' +
-          '<option value="FRONT_COVER">FRONT_COVER</option>' +
-          '<option value="BACK_COVER">BACK_COVER</option>' +
-          '<option value="PAGE">PAGE</option>' +
-        '</select>' +
-    '</div>' +
     '<div class="row">' +
       '<label class="col-sm-2">Picture</label>' +
       '<input type="file" nv-file-select="" class="file" data-msg-placeholder="Select File for upload..." uploader="uploader"/>' +
     '</div>' +
-    '<div class="row">' +
-      '<label class="col-sm-2">Page number</label>' +
-      '<input type="text" name="pageNumber" size="40" placeholder="Page number, only required for a PAGE type picture" ng-model="picture.pageNumber"/>' +
-    '</div>' +
-    '<input type="submit" ng-click="controller.sendPicture()" value="Save"/>' +
+   '<input type="submit" ng-click="controller.createPicture()" value="Save"/>' +
   '</form>';
 
 myApp.config(['$stateProvider', function ($stateProvider) {
-    $stateProvider.state('send-picture', {
+    $stateProvider.state('create-picture', {
         parent: 'ng-admin',
-        url: '/sendPicture/:id',
+        url: '/createPicture/:id',
         params: { id: null },
-        controller: sendPictureController,
+        controller: createPictureController,
         controllerAs: 'controller',
-        template: sendPictureControllerTemplate
+        template: createPictureControllerTemplate
     });
+}]);
+
+// Delete picture
+
+function deletePictureController($scope, $location, $http, Config, $stateParams, notification) {
+    this.notification = notification;
+    this.scope = $scope;
+    this.id = $stateParams.id;
+    this.http = $http;
+    this.location = $location;
+    this.url = Config.CONFIG.API_URL + '/picturesSummaries/' + $stateParams.id + '/picture';
+    $scope.id = $stateParams.id;
+}
+
+deletePictureController.prototype.deletePicture = function(confirmation) {
+    let notification = this.notification;
+    let location = this.location;
+    let id = this.id;
+    if (confirmation === true) {
+      this.http.delete(this.url).then(
+          function successCallback(response) {
+            notification.log('Picture was deleted.', {addnCls: 'humane-flatty-success'});
+            location.path('/picturesSummaries/show/' + id);
+          },
+          function errorCallback(response) {
+            notification.log('Picture was not deleted.', {addnCls: 'humane-flatty-failure'});
+            location.path('/picturesSummaries/show/' + id);
+          });
+    } else {
+       location.path('/picturesSummaries/show/' + id);
+    }
+};
+
+deletePictureController.$inject = ['$scope', '$location', '$http', 'Config', '$stateParams', 'notification'];
+
+var deletePictureControllerTemplate =
+    '<div class="row"><div class="col-lg-12">' +
+      '<ma-view-actions><ma-back-button></ma-back-button></ma-view-actions>' +
+        '<div class="page-header">' +
+          '<h1>Are you sure you want to delete picture under summary #{{ controller.id }} ?</h1>' +
+        '</div>' +
+    '</div></div>' +
+    '<div class="row">' +
+      '<label class="col-sm-2">Picture</label>' +
+      '<img src="{{ controller.url }}" width="100" />' +
+    '</div>' +
+    '<button class="btn btn-danger ng-scope" ng-click="controller.deletePicture(true)" translate="YES">Yes</button>' +
+    '<button class="btn btn-default ng-scope" ng-click="controller.deletePicture(false)" translate="NO">No</button>';
+
+myApp.config(['$stateProvider', function ($stateProvider) {
+    $stateProvider.state('delete-picture', {
+        parent: 'ng-admin',
+        url: '/deletePicture/:id',
+        params: { id: null },
+        controller: deletePictureController,
+        controllerAs: 'controller',
+        template: deletePictureControllerTemplate
+    });
+}]);
+
+myApp.directive('deletePicture', ['$location', function ($location) {
+    return {
+        restrict: 'E',
+        scope: { post: '&' },
+        template: '<a class="btn btn-default" ng-click="delete()">Delete picture</a>',
+        link: function (scope) {
+            scope.delete = function () {
+                $location.path('/deletePicture/' + scope.post().values.id);
+            };
+        }
+    };
 }]);
