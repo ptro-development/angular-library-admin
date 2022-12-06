@@ -9,7 +9,7 @@
     "angular-file-upload": "2.5.0"
   },
   "devDependencies": {
-    "http-server": "^0.11.1",
+    "http-server": "^0.11.2",
     "cpx": "^1.5.0"
   },
   "scripts": {
